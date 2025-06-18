@@ -14,7 +14,7 @@ from surya.recognition import RecognitionPredictor
 class OCRApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("OCR 前処理アプリ")
+        self.title("Lensaissance")
         self.geometry("1200x800")
 
         # ページアイテム: (PIL Image, base_name, page_num)
@@ -47,13 +47,15 @@ class OCRApp(ctk.CTk):
         self.frame_left.pack(side="left", fill="y", padx=10, pady=10)
 
         ctk.CTkButton(
-            self.frame_left, text="ファイルを選択", command=self.open_file
+            self.frame_left, text="Select the input file", command=self.open_file
         ).pack(pady=5)
         ctk.CTkButton(
-            self.frame_left, text="出力フォルダ選択", command=self.select_output_dir
+            self.frame_left,
+            text="Select the output directory",
+            command=self.select_output_dir,
         ).pack(pady=5)
         self.lbl_output_dir = ctk.CTkLabel(
-            self.frame_left, text=f"出力先: {self.output_dir}"
+            self.frame_left, text=f"Output directory: {self.output_dir}"
         )
         self.lbl_output_dir.pack(pady=5)
 
@@ -64,16 +66,16 @@ class OCRApp(ctk.CTk):
         self.page_selector.pack(pady=5)
         nav_frame = ctk.CTkFrame(self.frame_left)
         nav_frame.pack(pady=5)
-        ctk.CTkButton(nav_frame, text="前のページ", command=self.prev_page).pack(
+        ctk.CTkButton(nav_frame, text="Previous", command=self.prev_page).pack(
             side="left", padx=5
         )
-        ctk.CTkButton(nav_frame, text="次のページ", command=self.next_page).pack(
+        ctk.CTkButton(nav_frame, text="Next", command=self.next_page).pack(
             side="left", padx=5
         )
 
         # 前処理設定
         self.bin_checkbox = ctk.CTkCheckBox(
-            self.frame_left, text="2値化を有効", command=self.update_image
+            self.frame_left, text="Activate Binarization", command=self.update_image
         )
         self.bin_checkbox.pack(pady=10)
         self.bin_slider = ctk.CTkSlider(
@@ -87,7 +89,7 @@ class OCRApp(ctk.CTk):
         self.bin_slider.pack(pady=5)
 
         # ズーム
-        ctk.CTkLabel(self.frame_left, text="ズーム:").pack(pady=(20, 5))
+        ctk.CTkLabel(self.frame_left, text="Zoom:").pack(pady=(20, 5))
         self.zoom_slider = ctk.CTkSlider(
             self.frame_left, from_=0.5, to=3.0, number_of_steps=25, command=self.on_zoom
         )
@@ -96,7 +98,7 @@ class OCRApp(ctk.CTk):
 
         # マージボタン
         ctk.CTkButton(
-            self.frame_left, text="テキストを結合", command=self.merge_texts
+            self.frame_left, text="Combine text", command=self.merge_texts
         ).pack(pady=20)
 
         # 右パネル: Canvas と テキスト表示
@@ -144,7 +146,7 @@ class OCRApp(ctk.CTk):
         directory = filedialog.askdirectory()
         if directory:
             self.output_dir = directory
-            self.lbl_output_dir.configure(text=f"出力先: {self.output_dir}")
+            self.lbl_output_dir.configure(text=f"Output directory: {self.output_dir}")
 
     def open_file(self):
         file_types = [("Image Files", "*.png *.jpg *.jpeg"), ("PDF Files", "*.pdf")]
@@ -279,7 +281,7 @@ class OCRApp(ctk.CTk):
         iy1 = int(y1 / self.zoom_level)
         crop = img[min(iy0, iy1) : max(iy0, iy1), min(ix0, ix1) : max(ix0, ix1)]
         if crop.size == 0:
-            messagebox.showwarning("Warning", "選択領域が小さすぎます")
+            messagebox.showwarning("Warning", "The selection area is too small.")
             return
         pil_crop = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
         self.config(cursor="watch")
@@ -297,7 +299,7 @@ class OCRApp(ctk.CTk):
             for line in preds.text_lines:
                 f.write(f"{line.text}\n")
         self.load_page_text()
-        messagebox.showinfo("Info", f"ページ {pnum} OCR 終了: {path}")
+        messagebox.showinfo("Info", f"Page {pnum}'s OCR finished: {path}")
 
     def merge_texts(self):
         if not self.items:
@@ -312,7 +314,7 @@ class OCRApp(ctk.CTk):
                 if os.path.exists(path):
                     with open(path, "r", encoding="utf-8") as fr:
                         fw.write(fr.read() + "\n")
-        messagebox.showinfo("Info", f"全テキスト結合: {out_path}")
+        messagebox.showinfo("Info", f"Combine all text: {out_path}")
 
 
 if __name__ == "__main__":
