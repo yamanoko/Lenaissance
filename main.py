@@ -6,6 +6,7 @@ import customtkinter as ctk
 import cv2
 import fitz  # PyMuPDF
 import numpy as np
+from openai import OpenAI
 from PIL import Image, ImageTk
 from surya.detection import DetectionPredictor
 from surya.recognition import RecognitionPredictor
@@ -34,6 +35,10 @@ class OCRApp(ctk.CTk):
         # OCR predictor
         self.recognition_predictor = RecognitionPredictor()
         self.detection_predictor = DetectionPredictor()
+
+        # OpenAI client
+        self.openai_client = None
+        self.api_key = None
 
         # 出力フォルダ
         self.output_dir = os.getcwd()
@@ -100,6 +105,25 @@ class OCRApp(ctk.CTk):
         ctk.CTkButton(
             self.frame_left, text="Combine text", command=self.merge_texts
         ).pack(pady=20)
+
+        # OpenAI API設定
+        ctk.CTkLabel(self.frame_left, text="OpenAI API Settings:").pack(pady=(20, 5))
+        ctk.CTkButton(
+            self.frame_left, text="Set API Key", command=self.set_api_key
+        ).pack(pady=5)
+        self.api_status_label = ctk.CTkLabel(
+            self.frame_left, text="API Key: Not Set", text_color="red"
+        )
+        self.api_status_label.pack(pady=5)
+
+        # 校正ボタン
+        self.proofread_button = ctk.CTkButton(
+            self.frame_left,
+            text="Proofread Text",
+            command=self.proofread_text,
+            state="disabled",
+        )
+        self.proofread_button.pack(pady=10)
 
         # 右パネル: Canvas と テキスト表示
         self.frame_right = ctk.CTkFrame(self)
@@ -315,6 +339,141 @@ class OCRApp(ctk.CTk):
                     with open(path, "r", encoding="utf-8") as fr:
                         fw.write(fr.read() + "\n")
         messagebox.showinfo("Info", f"Combine all text: {out_path}")
+
+    def set_api_key(self):
+        """OpenAI APIキーを設定する"""
+        api_key = tk.simpledialog.askstring(
+            "API Key", "Enter your OpenAI API Key:", show="*"
+        )
+        if api_key:
+            try:
+                self.openai_client = OpenAI(api_key=api_key)
+                # APIキーの有効性をテスト
+                self.openai_client.models.list()
+                self.api_key = api_key
+                self.api_status_label.configure(text="API Key: Set", text_color="green")
+                self.proofread_button.configure(state="normal")
+                messagebox.showinfo("Success", "API Key set successfully!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Invalid API Key: {str(e)}")
+                self.api_status_label.configure(
+                    text="API Key: Invalid", text_color="red"
+                )
+
+    def proofread_text(self):
+        """現在のページのテキストを校正する"""
+        if not self.openai_client:
+            messagebox.showerror("Error", "Please set your OpenAI API Key first.")
+            return
+
+        if self.current_index is None:
+            messagebox.showerror("Error", "No page selected.")
+            return
+
+        # 現在のテキストを取得
+        current_text = self.textbox.get("0.0", "end-1c").strip()
+        if not current_text:
+            messagebox.showwarning("Warning", "No text to proofread.")
+            return
+
+        # 校正処理を実行
+        self.config(cursor="watch")
+        self.update()
+
+        try:
+            proofread_text = self._call_openai_proofreading(current_text)
+
+            # 校正結果を表示
+            self._show_proofreading_result(current_text, proofread_text)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Proofreading failed: {str(e)}")
+        finally:
+            self.config(cursor="")
+            self.update()
+
+    def _call_openai_proofreading(self, text):
+        """OpenAI APIを呼び出してテキストを校正する"""
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a professional proofreader. Please correct any spelling, grammar, and formatting errors in the provided text while maintaining the original meaning and structure. Return only the corrected text without any explanations.",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Please proofread the following text:\n\n{text}",
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=2000,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            raise Exception(f"OpenAI API call failed: {str(e)}")
+
+    def _show_proofreading_result(self, original_text, proofread_text):
+        """校正結果を別ウィンドウで表示し、適用選択肢を提供する"""
+        result_window = ctk.CTkToplevel(self)
+        result_window.title("Proofreading Result")
+        result_window.geometry("800x600")
+        result_window.grab_set()  # モーダルウィンドウにする
+
+        # ラベル
+        ctk.CTkLabel(
+            result_window, text="Original Text:", font=("Arial", 14, "bold")
+        ).pack(pady=(10, 5))
+
+        # 元のテキスト表示
+        original_textbox = ctk.CTkTextbox(result_window, height=200)
+        original_textbox.pack(fill="x", padx=10, pady=5)
+        original_textbox.insert("0.0", original_text)
+        original_textbox.configure(state="disabled")
+
+        # 校正後のテキストラベル
+        ctk.CTkLabel(
+            result_window, text="Proofread Text:", font=("Arial", 14, "bold")
+        ).pack(pady=(20, 5))
+
+        # 校正後のテキスト表示
+        proofread_textbox = ctk.CTkTextbox(result_window, height=200)
+        proofread_textbox.pack(fill="x", padx=10, pady=5)
+        proofread_textbox.insert("0.0", proofread_text)
+
+        # ボタンフレーム
+        button_frame = ctk.CTkFrame(result_window)
+        button_frame.pack(pady=20)
+
+        def apply_changes():
+            # 校正結果を適用
+            edited_text = proofread_textbox.get("0.0", "end-1c")
+            self.textbox.delete("0.0", "end")
+            self.textbox.insert("0.0", edited_text)
+
+            # ファイルに保存
+            base = self.items[self.current_index][1]
+            pnum = self.items[self.current_index][2]
+            txt_name = f"{base}_page{pnum}.txt"
+            path = os.path.join(self.output_dir, txt_name)
+
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(edited_text)
+
+            messagebox.showinfo("Success", "Proofread text has been applied and saved!")
+            result_window.destroy()
+
+        def cancel():
+            result_window.destroy()
+
+        # ボタン
+        ctk.CTkButton(button_frame, text="Apply Changes", command=apply_changes).pack(
+            side="left", padx=10
+        )
+        ctk.CTkButton(button_frame, text="Cancel", command=cancel).pack(
+            side="left", padx=10
+        )
 
 
 if __name__ == "__main__":
